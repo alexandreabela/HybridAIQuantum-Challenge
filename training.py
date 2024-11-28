@@ -58,7 +58,7 @@ def fit(epochs, lr, model, train_loader, val_loader, bs: BosonSampler, opt_func 
         val_acc.append(validation_acc)
 
         # plot training curves
-        plot_training_metrics(train_acc,val_acc,train_loss,val_loss)
+        # plot_training_metrics(train_acc,val_acc,train_loss,val_loss)
     return(history)
 
 
@@ -94,7 +94,8 @@ print(f"Boson sampler defined with number of parameters = {bs.nb_parameters}, an
 pcvl.pdisplay(bs.create_circuit())
 
 #### RUNNING DEVICE ####
-device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+device = "mps"
 print(f'DEVICE = {device}')
 
 #### MODEL ####
