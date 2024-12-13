@@ -5,6 +5,7 @@ import re
 import torch
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
+import networkx as nx
 
 ################
 ## DATA UTILS ##
@@ -53,6 +54,77 @@ class MNIST_partial(Dataset):
         if self.transform is not None:
             img_square = self.transform(img_square)
         return img_square, label
+    
+class MNIST_partial_graph(Dataset):
+    def __init__(self, data = '.\data', transform=None, split = 'train'):
+        """
+        Args:
+            data: path to dataset folder which contains train.csv and val.csv
+            transform (callable, optional): Optional transform to be applied
+                on a sample (e.g., data augmentation or normalization)
+            split: 'train' or 'val' to determine which set to download
+        """
+        self.data_dir = data
+        self.transform = transform
+        self.data = []
+        
+        if split == 'train':
+            filename = os.path.join(self.data_dir,'train.csv')
+        elif split == 'val':
+            filename = os.path.join(self.data_dir,'val.csv')
+        else:
+            raise AttributeError("split!='train' and split!='val': split must be train or val")
+        
+        self.df = pd.read_csv(filename)
+        
+    
+    def __len__(self):
+        l = len(self.df['image'])
+        return l
+    
+    def __getitem__(self, idx):
+        img = self.df['image'].iloc[idx]
+        label = self.df['label'].iloc[idx]
+        # string to list
+        img_list = re.split(r',', img)
+        # remove '[' and ']'
+        img_list[0] = img_list[0][1:]
+        img_list[-1] = img_list[-1][:-1]
+        # convert to float
+        img_float = [float(el) for el in img_list]
+        # convert to image
+        img_square = torch.unflatten(torch.tensor(img_float),0,(1,28,28))
+        if self.transform is not None:
+            img_square = self.transform(img_square)
+        return self.image_to_graph(img_square), label
+    
+    @staticmethod
+    def image_to_graph(image_tensor):
+        # Ensure image is 2D (single channel)
+        if len(image_tensor.shape) > 2:
+            image_tensor = image_tensor.squeeze(0)  # Remove channel dimension
+        
+        height, width = image_tensor.shape
+        G = nx.Graph()
+        
+        # Add nodes (pixels) with their intensity values
+        for i in range(height):
+            for j in range(width):
+                G.add_node((i,j), value=float(image_tensor[i,j]))
+        
+        # Add edges (8-connectivity)
+        directions = [(-1,-1), (-1,0), (-1,1),
+                    (0,-1),          (0,1),
+                    (1,-1),  (1,0),  (1,1)]
+        
+        for i in range(height):
+            for j in range(width):
+                for di, dj in directions:
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < height and 0 <= nj < width:
+                        G.add_edge((i,j), (ni,nj))
+        
+        return G
 
 
 # to uncomment if you want to use the whole MNIST dataset and download it
