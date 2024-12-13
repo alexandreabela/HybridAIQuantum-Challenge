@@ -1,12 +1,13 @@
-from torch.utils.data import Dataset, DataLoader
 import os
-import pandas as pd
 import re
 import torch
-import torchvision.transforms as transforms
-import matplotlib.pyplot as plt
+import pandas as pd
 import networkx as nx
+import matplotlib.pyplot as plt
 
+from torch_geometric.data import Data
+from torch.utils.data import Dataset
+from torch_geometric.utils.convert import from_networkx
 ################
 ## DATA UTILS ##
 ################
@@ -54,7 +55,6 @@ class MNIST_partial(Dataset):
         if self.transform is not None:
             img_square = self.transform(img_square)
         return img_square, label
-    
 class MNIST_partial_graph(Dataset):
     def __init__(self, data = '.\data', transform=None, split = 'train'):
         """
@@ -75,14 +75,18 @@ class MNIST_partial_graph(Dataset):
         else:
             raise AttributeError("split!='train' and split!='val': split must be train or val")
         
-        self.df = pd.read_csv(filename)
-        
+        self.df = pd.read_csv(filename)    
     
     def __len__(self):
         l = len(self.df['image'])
         return l
     
     def __getitem__(self, idx):
+        graph_nx, label = self.get_graphNX(idx)
+        graph_ptgm = from_networkx(graph_nx, group_node_attrs=torch.tensor([[graph_nx.nodes[node]['x']] for node in graph_nx.nodes()]))
+        return graph_ptgm, label
+    
+    def get_img_label(self, idx): 
         img = self.df['image'].iloc[idx]
         label = self.df['label'].iloc[idx]
         # string to list
@@ -96,13 +100,21 @@ class MNIST_partial_graph(Dataset):
         img_square = torch.unflatten(torch.tensor(img_float),0,(1,28,28))
         if self.transform is not None:
             img_square = self.transform(img_square)
+        
+        return img_square, label
+
+    def get_graphNX(self, idx):
+        img_square, label = self.get_img_label(idx)
         return self.image_to_graph(img_square), label
-    
+
     @staticmethod
     def image_to_graph(image_tensor):
+        """
+        Transform an image tensor of a grayscale image into a networkx graph.
+        """
         # Ensure image is 2D (single channel)
         if len(image_tensor.shape) > 2:
-            image_tensor = image_tensor.squeeze(0)  # Remove channel dimension
+            image_tensor = image_tensor.squeeze(0)  
         
         height, width = image_tensor.shape
         G = nx.Graph()
@@ -110,7 +122,7 @@ class MNIST_partial_graph(Dataset):
         # Add nodes (pixels) with their intensity values
         for i in range(height):
             for j in range(width):
-                G.add_node((i,j), value=float(image_tensor[i,j]))
+                G.add_node((i,j), x=float(image_tensor[i,j]))
         
         # Add edges (8-connectivity)
         directions = [(-1,-1), (-1,0), (-1,1),
@@ -165,3 +177,4 @@ def plot_training_metrics(train_acc,val_acc,train_loss,val_loss):
 def accuracy(outputs, labels):
     _, preds = torch.max(outputs, dim = 1)
     return(torch.tensor(torch.sum(preds == labels).item()/ len(preds)))
+

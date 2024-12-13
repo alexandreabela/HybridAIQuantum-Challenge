@@ -1,7 +1,5 @@
 import torch
-import torchvision
-import matplotlib.pyplot as plt
-import torchvision.transforms as transforms
+import numpy as np
 import torch.nn.functional as F
 import torch.nn as nn
 from tqdm import tqdm
@@ -12,6 +10,8 @@ from utils import accuracy
 import perceval as pcvl
 import perceval.providers.scaleway as scw  # Uncomment to allow running on scaleway
 
+from torch_geometric.nn import GCNConv
+from torch_geometric.nn import global_mean_pool
 
 class MnistModel(nn.Module):
     def __init__(self, device = 'cpu', embedding_size = 0):
@@ -64,8 +64,38 @@ class MnistModel(nn.Module):
     def epoch_end(self, epoch, result):
         print("Epoch [{}], val_loss: {:.4f}, val_acc: {:.4f}".format(epoch, result['val_loss'], result['val_acc']))
         return result['val_loss'], result['val_acc']
+    
+class GCN(torch.nn.Module):
+    def __init__(self, num_node_features, hidden_channels=1):
+        super(GCN, self).__init__()
+        self.conv1 = GCNConv(num_node_features, hidden_channels)
+        self.conv2 = GCNConv(hidden_channels, hidden_channels)
 
-# evaluation of the model
+        self.lin = nn.Linear(hidden_channels, 10)
+
+    def forward(self, data, batch=None):
+        x, edge_index = data.x, data.edge_index
+
+        # First Graph Convolution
+        x = self.conv1(x, edge_index)
+        x = F.relu(x)
+        
+        # Second Graph Convolution
+        x = self.conv2(x, edge_index)
+
+        # Pooling layer
+        batch = torch.zeros(data.x.shape[0],dtype=int) if batch is None else batch
+        x = global_mean_pool(x, batch)
+        print(x.shape)
+
+        # Final linear layer
+        x = self.lin(x)
+        
+        return x.flatten()
+
+    def predict(self, data):
+        return np.argmax(self(data))
+
 # evaluation of the model
 def evaluate(model, val_loader, bs: BosonSampler = None):
     if model.embedding_size:
